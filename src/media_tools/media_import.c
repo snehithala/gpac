@@ -5063,6 +5063,12 @@ restart_import:
 
 				if (import->flags & GF_IMPORT_FORCE_XPS_INBAND) {
 					copy_size = nal_size;
+					slc = (GF_AVCConfigSlot*)gf_malloc(sizeof(GF_AVCConfigSlot));
+					slc->size = nal_size;
+					slc->id = idx;
+					slc->data = (char*)gf_malloc(sizeof(char)*slc->size);
+					memcpy(slc->data, buffer, sizeof(char)*slc->size);
+					gf_list_add(dstcfg->sequenceParameterSets, slc);
 				} else {
 					slc = (GF_AVCConfigSlot*)gf_malloc(sizeof(GF_AVCConfigSlot));
 					slc->size = nal_size;
@@ -5159,6 +5165,26 @@ restart_import:
 			if (import->flags & GF_IMPORT_FORCE_XPS_INBAND) {
 				copy_size = nal_size;
 				if (sample_has_slice) flush_sample = GF_TRUE;
+
+				if (avc.pps[idx].status==1) {
+					avc.pps[idx].status = gf_crc_32(buffer, nal_size);
+					slc = (GF_AVCConfigSlot*)gf_malloc(sizeof(GF_AVCConfigSlot));
+					slc->size = nal_size;
+					slc->id = idx;
+					slc->data = (char*)gf_malloc(sizeof(char)*slc->size);
+					memcpy(slc->data, buffer, sizeof(char)*slc->size);
+
+					/* by default, we put all PPS in the base AVC layer,
+					  they will be moved to the SVC layer upon analysis of SVC slice. */
+					//dstcfg = (import->flags & GF_IMPORT_SVC_EXPLICIT) ? svccfg : avccfg;
+					dstcfg = avccfg;
+
+					if (import->flags & GF_IMPORT_SVC_EXPLICIT)
+						dstcfg = svccfg;
+
+					gf_list_add(dstcfg->pictureParameterSets, slc);
+				}
+
 			} else {
 				if (avc.pps[idx].status==1) {
 					avc.pps[idx].status = gf_crc_32(buffer, nal_size);

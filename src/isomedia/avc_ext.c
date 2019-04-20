@@ -1433,6 +1433,7 @@ static GF_Err gf_isom_avc_config_update_ex(GF_ISOFile *the_file, u32 trackNumber
 			entry->mvc_config = NULL;
 		}
 
+/*		//Retaining Parameter Sets
 		while (gf_list_count(entry->avc_config->config->sequenceParameterSets)) {
 			GF_AVCConfigSlot *sl = (GF_AVCConfigSlot*)gf_list_get(entry->avc_config->config->sequenceParameterSets, 0);
 			gf_list_rem(entry->avc_config->config->sequenceParameterSets, 0);
@@ -1446,6 +1447,7 @@ static GF_Err gf_isom_avc_config_update_ex(GF_ISOFile *the_file, u32 trackNumber
 			if (sl->data) gf_free(sl->data);
 			gf_free(sl);
 		}
+*/
 
 		if (entry->type == GF_ISOM_BOX_TYPE_AVC1)
 			entry->type = GF_ISOM_BOX_TYPE_AVC3;
@@ -1771,7 +1773,7 @@ static Bool hevc_cleanup_config(GF_HEVCConfig *cfg, HevcConfigUpdateType operand
 		/*we want to force hev1*/
 		if (operand_type==GF_ISOM_HVCC_SET_INBAND) {
 			ar->array_completeness = 0;
-
+		/* 	//Retaining parameter sets
 			while (gf_list_count(ar->nalus)) {
 				GF_AVCConfigSlot *sl = (GF_AVCConfigSlot*)gf_list_get(ar->nalus, 0);
 				gf_list_rem(ar->nalus, 0);
@@ -1782,6 +1784,7 @@ static Bool hevc_cleanup_config(GF_HEVCConfig *cfg, HevcConfigUpdateType operand
 			gf_free(ar);
 			gf_list_rem(cfg->param_array, i);
 			i--;
+		*/
 		}
 		if (!ar->array_completeness)
 			array_incomplete = 1;
