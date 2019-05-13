@@ -293,7 +293,12 @@ GF_Err gf_isom_box_write_header(GF_Box *ptr, GF_BitStream *bs)
 	} else {
 		gf_bs_write_u32(bs, (u32) ptr->size);
 	}
-	gf_bs_write_u32(bs, ptr->type);
+	if (ptr->type == GF_ISOM_BOX_TYPE_AVC3) {
+		GF_LOG(GF_LOG_INFO, GF_LOG_CONTAINER, ("Writing avc1 instead of avc3 for Unified Packaging\n"));
+		gf_bs_write_u32(bs, GF_ISOM_BOX_TYPE_AVC1);
+	} else {
+		gf_bs_write_u32(bs, ptr->type);
+	}
 	if (ptr->type == GF_ISOM_BOX_TYPE_UUID) {
 		u32 i;
 		char uuid[16];
