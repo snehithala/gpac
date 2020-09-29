@@ -4817,11 +4817,11 @@ static GF_Err gf_import_avc_h264(GF_MediaImporter *import)
 	u32 nal_size, track, trackID, di, cur_samp, nb_i, nb_idr, nb_p, nb_b, nb_sp, nb_si, nb_sei, max_w, max_h, max_total_delay, nb_nalus;
 	s32 idx, sei_recovery_frame_count;
 	u64 duration;
-	u8 nal_type;
+	u8 nal_type, prev_nal_type;
 	GF_Err e;
 	FILE *mdia;
 	AVCState avc;
-	GF_AVCConfigSlot *slc;
+	GF_AVCConfigSlot *slc, *sps_stream, *pps_stream;
 	GF_AVCConfig *avccfg, *svccfg, *dstcfg;
 	GF_BitStream *bs;
 	GF_BitStream *sample_data;
@@ -4941,7 +4941,11 @@ restart_import:
 	priority_prev_nalu_prefix = 0;
 	nb_nalus = 0;
 
+	int iteration_num = 0;
 	while (gf_bs_available(bs)) {
+		printf("\n");
+
+
 		u8 nal_hdr, skip_nal, is_subseq, add_sps, nal_ref_idc;
 		u32 nal_and_trailing_size;
 
@@ -4960,7 +4964,10 @@ restart_import:
 
 		gf_bs_seek(bs, nal_start);
 		nal_hdr = gf_bs_read_u8(bs);
+		prev_nal_type = nal_type;
 		nal_type = nal_hdr & 0x1F;
+
+		printf("iteration num %d nal type %d nal_size %d ", iteration_num++, nal_type, nal_size);
 
 		is_subseq = 0;
 		skip_nal = 0;
@@ -4972,7 +4979,10 @@ restart_import:
 		}
 		nb_nalus ++;
 
-		switch (gf_media_avc_parse_nalu(bs, nal_hdr, &avc)) {
+		printf("sample_has_slice %d ", sample_has_slice);
+		int ret_val_1 = gf_media_avc_parse_nalu(bs, nal_hdr, &avc);
+		printf("return value %d ", ret_val_1);
+		switch (ret_val_1) {
 		case 1:
 			if (import->flags & GF_IMPORT_FORCE_XPS_INBAND) {
 				if (sample_has_slice) flush_sample = GF_TRUE;
@@ -5063,20 +5073,15 @@ restart_import:
 
 				if (import->flags & GF_IMPORT_FORCE_XPS_INBAND) {
 					copy_size = nal_size;
-					slc = (GF_AVCConfigSlot*)gf_malloc(sizeof(GF_AVCConfigSlot));
-					slc->size = nal_size;
-					slc->id = idx;
-					slc->data = (char*)gf_malloc(sizeof(char)*slc->size);
-					memcpy(slc->data, buffer, sizeof(char)*slc->size);
-					gf_list_add(dstcfg->sequenceParameterSets, slc);
-				} else {
-					slc = (GF_AVCConfigSlot*)gf_malloc(sizeof(GF_AVCConfigSlot));
-					slc->size = nal_size;
-					slc->id = idx;
-					slc->data = (char*)gf_malloc(sizeof(char)*slc->size);
-					memcpy(slc->data, buffer, sizeof(char)*slc->size);
-					gf_list_add(dstcfg->sequenceParameterSets, slc);
 				}
+
+				slc = (GF_AVCConfigSlot*)gf_malloc(sizeof(GF_AVCConfigSlot));
+				slc->size = nal_size;
+				slc->id = idx;
+				slc->data = (char*)gf_malloc(sizeof(char)*slc->size);
+				memcpy(slc->data, buffer, sizeof(char)*slc->size);
+				sps_stream = slc;
+				gf_list_add(dstcfg->sequenceParameterSets, slc);
 
 				/*disable frame rate scan, most bitstreams have wrong values there*/
 				if (detect_fps && avc.sps[idx].vui.timing_info_present_flag
@@ -5165,46 +5170,30 @@ restart_import:
 			if (import->flags & GF_IMPORT_FORCE_XPS_INBAND) {
 				copy_size = nal_size;
 				if (sample_has_slice) flush_sample = GF_TRUE;
-
-				if (avc.pps[idx].status==1) {
-					avc.pps[idx].status = gf_crc_32(buffer, nal_size);
-					slc = (GF_AVCConfigSlot*)gf_malloc(sizeof(GF_AVCConfigSlot));
-					slc->size = nal_size;
-					slc->id = idx;
-					slc->data = (char*)gf_malloc(sizeof(char)*slc->size);
-					memcpy(slc->data, buffer, sizeof(char)*slc->size);
-
-					/* by default, we put all PPS in the base AVC layer,
-					  they will be moved to the SVC layer upon analysis of SVC slice. */
-					//dstcfg = (import->flags & GF_IMPORT_SVC_EXPLICIT) ? svccfg : avccfg;
-					dstcfg = avccfg;
-
-					if (import->flags & GF_IMPORT_SVC_EXPLICIT)
-						dstcfg = svccfg;
-
-					gf_list_add(dstcfg->pictureParameterSets, slc);
-				}
-
-			} else {
-				if (avc.pps[idx].status==1) {
-					avc.pps[idx].status = gf_crc_32(buffer, nal_size);
-					slc = (GF_AVCConfigSlot*)gf_malloc(sizeof(GF_AVCConfigSlot));
-					slc->size = nal_size;
-					slc->id = idx;
-					slc->data = (char*)gf_malloc(sizeof(char)*slc->size);
-					memcpy(slc->data, buffer, sizeof(char)*slc->size);
-
-					/* by default, we put all PPS in the base AVC layer,
-					  they will be moved to the SVC layer upon analysis of SVC slice. */
-					//dstcfg = (import->flags & GF_IMPORT_SVC_EXPLICIT) ? svccfg : avccfg;
-					dstcfg = avccfg;
-
-					if (import->flags & GF_IMPORT_SVC_EXPLICIT)
-						dstcfg = svccfg;
-
-					gf_list_add(dstcfg->pictureParameterSets, slc);
-				}
 			}
+
+			if (avc.pps[idx].status==1) {
+				// avc.pps[idx].status = gf_crc_32(buffer, nal_size);
+				avc.pps[idx].status = 2;
+				printf(" status pps %x ", avc.pps[idx].status);
+				slc = (GF_AVCConfigSlot*)gf_malloc(sizeof(GF_AVCConfigSlot));
+				slc->size = nal_size;
+				slc->id = idx;
+				slc->data = (char*)gf_malloc(sizeof(char)*slc->size);
+				memcpy(slc->data, buffer, sizeof(char)*slc->size);
+				pps_stream = slc;
+
+				/* by default, we put all PPS in the base AVC layer,
+					they will be moved to the SVC layer upon analysis of SVC slice. */
+				//dstcfg = (import->flags & GF_IMPORT_SVC_EXPLICIT) ? svccfg : avccfg;
+				dstcfg = avccfg;
+
+				if (import->flags & GF_IMPORT_SVC_EXPLICIT)
+					dstcfg = svccfg;
+
+				gf_list_add(dstcfg->pictureParameterSets, slc);
+			}
+
 			break;
 		case GF_AVC_NALU_SEI:
 			if (import->flags & GF_IMPORT_NO_SEI) {
@@ -5228,6 +5217,7 @@ restart_import:
 		case GF_AVC_NALU_IDR_SLICE:
 			if (!skip_nal) {
 				copy_size = nal_size;
+				printf("avc.s_info.slice_type %d ", avc.s_info.slice_type);
 				switch (avc.s_info.slice_type) {
 				case GF_AVC_TYPE_P:
 				case GF_AVC_TYPE2_P:
@@ -5444,7 +5434,7 @@ restart_import:
 			if (nal_ref_idc) {
 				sample_is_ref = GF_TRUE;
 			}
-			
+
 			if (is_islice)
 				sample_has_islice = GF_TRUE;
 
@@ -5482,6 +5472,17 @@ restart_import:
 
 			}
 			if (!sample_data) sample_data = gf_bs_new(NULL, 0, GF_BITSTREAM_WRITE);
+			printf("Prev_nal_type %d ", prev_nal_type);
+			if (GF_AVC_NALU_IDR_SLICE == nal_type && (import->flags & GF_IMPORT_FORCE_XPS_INBAND) && 
+					(GF_AVC_NALU_PIC_PARAM != prev_nal_type) && (GF_AVC_NALU_SEQ_PARAM != prev_nal_type)) { 
+				printf(" Copying XPS ");
+				printf(" %d * 2 ", size_length);
+				printf("Prev_nal_type %d ", prev_nal_type);
+				gf_bs_write_int(sample_data, sps_stream->size, size_length);
+				gf_bs_write_data(sample_data, sps_stream->data, sps_stream->size);
+				gf_bs_write_int(sample_data, pps_stream->size, size_length);
+				gf_bs_write_data(sample_data, pps_stream->data, pps_stream->size);
+			}
 			gf_bs_write_int(sample_data, copy_size, size_length);
 			gf_bs_write_data(sample_data, buffer, copy_size);
 
